@@ -1,3 +1,4 @@
+import os
 from numpy import *
 
 
@@ -29,6 +30,15 @@ def words_to_list(vocab, inputs):
             continue
         print "Word %s not in my vocabulary!" % word
     return words
+
+
+def bag_of_words_to_list(vocab, inputs):
+	words = [0] * len(vocab)
+	for word in inputs:
+		if word in vocab:
+			words[vocab.index(word)] += 1
+			continue
+	return words
 
 
 def train(matrix, category):
@@ -80,3 +90,45 @@ def test_nb():
     test_entry = ['stupid', 'garbage']
     doc = array(words_to_list(vocab, test_entry))
     print test_entry, 'classified as: ', classify(doc, p0, p1, abusive_prob)
+
+
+def parse_string(string):
+	import re
+	tokens = re.split(r'\W*', string)
+	return [token.lower() for token in tokens if len(token) > 2]
+
+
+def test_spam():
+	doc_list = []
+	class_list = []
+	full_text = []
+	for i in xrange(1, 26):
+		word_list = parse_string(open(os.path.dirname(os.path.realpath(__file__)) + '/email/spam/%d.txt' % i).read())
+		doc_list.append(word_list)
+		full_text.extend(word_list)
+		class_list.append(1)
+		word_list = parse_string(open(os.path.dirname(os.path.realpath(__file__)) + '/email/ham/%d.txt' % i).read())
+		doc_list.append(word_list)
+		full_text.extend(word_list)
+		class_list.append(0)
+	vocab_list = create_vocab(doc_list)
+	training_set = range(50)
+	test_set = []
+	for i in range(10):
+		rand_index = int(random.uniform(0,len(training_set)))
+		test_set.append(training_set[rand_index])
+		del(training_set[rand_index])
+	
+	train_matrix = []
+	train_classes = []
+	for doc_index in training_set:
+		train_matrix.append(bag_of_words_to_list(vocab_list, doc_list[doc_index]))
+		train_classes.append(class_list[doc_index])
+
+	p0, p1, spam_prob = train(array(train_matrix), array(train_classes))
+	error_count = 0
+	for doc_index in test_set:
+		word_vector = bag_of_words_to_list(vocab_list, doc_list[doc_index])
+		if classify(array(word_vector), p0, p1, spam_prob) != class_list[doc_index]:
+			error_count += 1
+	print 'the error rate is: ',float(error_count)/len(test_set)
