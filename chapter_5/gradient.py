@@ -30,6 +30,17 @@ def grad_ascent(data, labels):
     return weights
 
 
+def stoc_grad_ascent0(data, labels):
+    m, n = shape(data)
+    alpha = 0.01
+    weights = ones(n)
+    for i in range(m):
+        h = sigmoid(sum(data[i] * weights))
+        err = labels[i] - h
+        weights = weights + alpha * err * data[i]
+    return weights
+
+
 def plot_best_fit(weights):
     import matplotlib.pyplot as plot
     dm, lm = load_data()
