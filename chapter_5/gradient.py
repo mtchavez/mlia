@@ -41,6 +41,21 @@ def stoc_grad_ascent0(data, labels):
     return weights
 
 
+def stoc_grad_ascent1(data, labels, iterations=150):
+    m, n = shape(data)
+    weights = ones(n)
+    for j in range(iterations):
+        data_index = range(m)
+        for i in range(m):
+            alpha = 4 / (1.0 + j + i) + 0.01
+            rand_index = int(random.uniform(0, len(data_index)))
+            h = sigmoid(sum(data[rand_index] * weights))
+            err = labels[rand_index] - h
+            weights = weights + alpha * err * data[rand_index]
+            del(data_index[rand_index])
+    return weights
+
+
 def plot_best_fit(weights):
     import matplotlib.pyplot as plot
     dm, lm = load_data()
