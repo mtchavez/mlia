@@ -107,7 +107,7 @@ def smo_simple(data, labels, C, toler, max_iter):
 
 class optStruct:
 
-    def __init__(self, data, labels, C, toler):
+    def __init__(self, data, labels, C, toler, ktup=None):
         self.X = data
         self.labels = labels
         self.C = C
@@ -116,6 +116,9 @@ class optStruct:
         self.alphas = mat(zeros((self.m, 1)))
         self.b = 0
         self.err_cache = mat(zeros((self.m, 1)))
+        if ktup:
+            for i in range(self.m):
+                self.K[:, i] = kernel_trans(self.X, self.X[i, :], ktup)
 
 
 def calc_kerr(oS, k):
@@ -123,6 +126,9 @@ def calc_kerr(oS, k):
             (oS.X * oS.X[k, :].T)) + oS.b
     return pred - float(oS.labels[k])
 
+def kern_calc_kerr(oS, k):
+    pred = float(multiply(oS.alphas, oS.labels).T * oS.K[:, k] + oS.b)
+    return pred - float(oS.labels[k])
 
 def select_j(i, oS, ierr):
     max_k = -1
@@ -147,12 +153,12 @@ def select_j(i, oS, ierr):
     return j, jerr
 
 
-def update_kerr(oS, k):
-    kerr = calc_kerr(oS, k)
+def update_kerr(oS, k, kernel=False):
+    kerr = kern_calc_kerr(oS, k) if kernel else calc_kerr(oS, k)
     oS.err_cache[k] = kerr
 
 
-def inner_l(i, oS):
+def inner_l(i, oS, kernel=False):
     ierr = calc_kerr(oS, i)
     if ((oS.labels[i] * ierr < -oS.tol) and (oS.alphas[i] < oS.C)) or \
             ((oS.labels[i] * ierr > oS.tol) and (oS.alphas[i] > 0)):
@@ -169,8 +175,11 @@ def inner_l(i, oS):
         if L == H:
             print "L == H"
             return 0
-
-        eta = 2.0 * oS.X[i, :] * oS.X[j, :].T - oS.X[i, :] * oS.X[i, :].T - \
+        
+        if kernel:
+            eta = 2.0 * oS.K[i, j] - oS.K[i, i] - oS.K[j, j]
+        else:
+            eta = 2.0 * oS.X[i, :] * oS.X[j, :].T - oS.X[i, :] * oS.X[i, :].T - \
                 oS.X[j, :] * oS.X[j, :].T
 
         if eta >= 0:
@@ -188,13 +197,19 @@ def inner_l(i, oS):
         oS.alphas[i] += oS.labels[j] * oS.labels[i] * (old_jalpha - oS.alphas[j])
         update_kerr(oS, i)
 
-        b1 = oS.b - ierr - oS.labels[i] * (oS.alphas[i] - old_ialpha) * \
-                oS.X[i, :] * oS.X[i,:].T - oS.labels[j] * \
-                (oS.alphas[j] - old_jalpha) * oS.X[i, :] * oS.X[j, :].T
+        if kernel:
+            b1 = oS.b - ierr - oS.labels[i] * (oS.alphas[i] - old_ialpha) * oS.K[i, i] - \
+                    oS.labels[j] * (oS.labels[j] - old_jalpha) * oS.K[i, j]
+            b2 = oS.b - jerr - oS.labels[i] * (oS.alphas[i] - old_ialpha) * oS.K[i, j] - \
+                    oS.labels[j] * (oS.alphas[j] - old_jalpha) * oS.K[j, j]
+        else:
+            b1 = oS.b - ierr - oS.labels[i] * (oS.alphas[i] - old_ialpha) * \
+                    oS.X[i, :] * oS.X[i,:].T - oS.labels[j] * \
+                    (oS.alphas[j] - old_jalpha) * oS.X[i, :] * oS.X[j, :].T
         
-        b2 = oS.b - jerr - oS.labels[i] * (oS.alphas[i] - old_ialpha) * \
-                oS.X[i, :] * oS.X[j, :].T - oS.labels[j] * \
-                (oS.alphas[j] - old_jalpha) * oS.X[j, :] * oS.X[j, ].T
+            b2 = oS.b - jerr - oS.labels[i] * (oS.alphas[i] - old_ialpha) * \
+                    oS.X[i, :] * oS.X[j, :].T - oS.labels[j] * \
+                    (oS.alphas[j] - old_jalpha) * oS.X[j, :] * oS.X[j, ].T
 
         if (0 < oS.alphas[i]) and (oS.C > oS.alphas[i]):
             oS.b = b1
@@ -245,3 +260,53 @@ def calc_ws(alphas, data, labels):
     for i in range(m):
         w += multiply(alphas[i] * label_matrix[i], X[i, :].T)
     return w
+
+"""
+SMO using Kernels
+"""
+
+def kernel_trans(X, A, ktup):
+    m, n = shape(X)
+    K = mat(zeros((m, 1)))
+    if ktup[0] == 'lin':
+        K = X * A.T
+    elif ktup[0] == 'rbf':
+        for j in range(m):
+            delta = X[j, :] - A
+            K[j] = delta * delta.T
+        K = exp(K / (-1 * ktup[1] ** 2))
+    else:
+        raise NameError('Kernel not recognized!')
+    return K
+
+
+def test_rbf(k1=1.3):
+    data, labels = load_data('testSetRBF.txt')
+    b, alphas = smo_full(data, labels, 200, 0.0001, 10000, ('rbf', k1))
+    data_matrix = mat(data)
+    label_matrix = mat(labels).transpose()
+    sv_ind = nonzero(alphas.A > 0)[0]
+    svs = data_matrix[sv_ind]
+    labelsv = label_matrix[sv_ind]
+    print "%d support vectors" % shape(svs)[0]
+    m, n = shape(data_matrix)
+    error_count = 0
+    for i in range(m):
+        kernel_eval = kernel_trans(svs, data_matrix[i, :], ('rbf', k1))
+        predict = kernel_eval.T * multiply(labelsv, alphas[sv_ind]) + b
+        if sign(predict) != sign(labels[i]):
+            error_count += 1
+
+    print "Training error rate: %f" % (float(error_count) / m)
+    data, labels = load_data('testSetRBF2.txt')
+    error_count = 0
+    data_matrix = mat(data)
+    label_matrix = mat(labels).transpose()
+    m, n = shape(data)
+    for i in range(m):
+        kernel_eval = kernel_trans(svs, data_matrix[i, :], ('rbf', k1))
+        predict = kernel_eval.T * multiply(labelsv, alphas[sv_ind])
+        if sign(predict) != sign(labels[i]):
+            error_count += 1
+
+    print "Test error rate: %f" % (float(error_count) / m)
