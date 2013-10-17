@@ -116,12 +116,15 @@ class optStruct:
         self.alphas = mat(zeros((self.m, 1)))
         self.b = 0
         self.err_cache = mat(zeros((self.m, 1)))
+        self.K = mat(zeros((self.m, self.m)))
         if ktup:
             for i in range(self.m):
                 self.K[:, i] = kernel_trans(self.X, self.X[i, :], ktup)
 
 
-def calc_kerr(oS, k):
+def calc_kerr(oS, k, kernel=False):
+    if kernel:
+        return kern_calc_kerr(oS, k)
     pred = float(multiply(oS.alphas, oS.labels).T * \
             (oS.X * oS.X[k, :].T)) + oS.b
     return pred - float(oS.labels[k])
@@ -130,7 +133,7 @@ def kern_calc_kerr(oS, k):
     pred = float(multiply(oS.alphas, oS.labels).T * oS.K[:, k] + oS.b)
     return pred - float(oS.labels[k])
 
-def select_j(i, oS, ierr):
+def select_j(i, oS, ierr, kernel=False):
     max_k = -1
     max_delta = 0
     jerr = 0
@@ -140,7 +143,7 @@ def select_j(i, oS, ierr):
         for k in valid_ecache:
             if k == i:
                 continue
-            kerr = calc_kerr(oS, k)
+            kerr = calc_kerr(oS, k, kernel)
             edelta = abs(ierr - kerr)
             if edelta > max_delta:
                 max_k = k
@@ -149,7 +152,7 @@ def select_j(i, oS, ierr):
         return max_k, jerr
     else:
         j = select_jrand(i, oS.m)
-        jerr = calc_kerr(oS, j)
+        jerr = calc_kerr(oS, j, kernel)
     return j, jerr
 
 
@@ -162,7 +165,7 @@ def inner_l(i, oS, kernel=False):
     ierr = calc_kerr(oS, i)
     if ((oS.labels[i] * ierr < -oS.tol) and (oS.alphas[i] < oS.C)) or \
             ((oS.labels[i] * ierr > oS.tol) and (oS.alphas[i] > 0)):
-        j, jerr = select_j(i, oS, ierr)
+        j, jerr = select_j(i, oS, ierr, kernel)
         old_ialpha = oS.alphas[i].copy()
         old_jalpha = oS.alphas[j].copy()
         if oS.labels[i] != oS.labels[j]:
@@ -188,14 +191,14 @@ def inner_l(i, oS, kernel=False):
 
         oS.alphas[j] -= oS.labels[j] * (ierr - jerr) / eta
         oS.alphas[j] = clip_alpha(oS.alphas[j], H, L)
-        update_kerr(oS, j)
+        update_kerr(oS, j, kernel)
 
         if abs(oS.alphas[j] - old_jalpha) < 0.00001:
             print "j not moving enough"
             return 0
 
         oS.alphas[i] += oS.labels[j] * oS.labels[i] * (old_jalpha - oS.alphas[j])
-        update_kerr(oS, i)
+        update_kerr(oS, i, kernel)
 
         if kernel:
             b1 = oS.b - ierr - oS.labels[i] * (oS.alphas[i] - old_ialpha) * oS.K[i, i] - \
@@ -223,8 +226,8 @@ def inner_l(i, oS, kernel=False):
         return 0
 
 
-def smo_full(data, labels, C, toler, max_iter, ktup=('lin', 0)):
-    oS = optStruct(mat(data), mat(labels).transpose(), C, toler)
+def smo_full(data, labels, C, toler, max_iter, ktup=('lin', 0), kernel=False):
+    oS = optStruct(mat(data), mat(labels).transpose(), C, toler, ktup)
     iter = 0
     entire_set = True
     alphas_changed = 0
@@ -232,13 +235,13 @@ def smo_full(data, labels, C, toler, max_iter, ktup=('lin', 0)):
         alphas_changed = 0
         if entire_set:
             for i in range(oS.m):
-                alphas_changed += inner_l(i, oS)
+                alphas_changed += inner_l(i, oS, kernel)
             print "Full Set, iter: %d i: %d, pairs changed %d" % (iter, i, alphas_changed)
             iter += 1
         else:
             nonbound = nonzero((oS.alphas.A > 0) * (oS.alphas.A < C))[0]
             for i in nonbound:
-                alphas_changed += inner_l(i, oS)
+                alphas_changed += inner_l(i, oS, kernel)
                 print "non bound, iter: %d i: %d, pairs changed %d" % (iter, i, alphas_changed)
             iter += 1
 
@@ -282,7 +285,7 @@ def kernel_trans(X, A, ktup):
 
 def test_rbf(k1=1.3):
     data, labels = load_data('testSetRBF.txt')
-    b, alphas = smo_full(data, labels, 200, 0.0001, 10000, ('rbf', k1))
+    b, alphas = smo_full(data, labels, 200, 0.0001, 10000, ('rbf', k1), True)
     data_matrix = mat(data)
     label_matrix = mat(labels).transpose()
     sv_ind = nonzero(alphas.A > 0)[0]
@@ -309,4 +312,59 @@ def test_rbf(k1=1.3):
         if sign(predict) != sign(labels[i]):
             error_count += 1
 
+    print "Test error rate: %f" % (float(error_count) / m)
+
+
+"""
+Handwriting Recognition
+"""
+
+def load_images(dir_name):
+    from os import listdir
+    import sys
+    sys.path.append("..")
+    from chapter_2.kNN import img2vector
+    labels = []
+    file_list = listdir(dir_name)
+    m = len(file_list)
+    train_matrix = zeros((m, 1024))
+    for i in range(m):
+        filename = file_list[i].split('.')[0]
+        class_num = int(filename.split('_')[0])
+        if class_num == 9:
+            labels.append(-1)
+        else:
+            labels.append(1)
+        train_matrix[i, :] = img2vector('%s/%s.txt' % (dir_name, filename))
+    return train_matrix, labels
+
+
+def test_digits(ktup=('rbuf', 10)):
+    data, labels = load_images('trainingDigits')
+    b, alphas = smo_full(data, labels, 200, 0.0001, 10000, ktup, True)
+    data_matrix = mat(data)
+    label_matrix = mat(labels).transpose()
+    sv_ind = nonzero(alphas.A > 0)[0]
+    svs = data_matrix[sv_ind]
+    labelsv = label_matrix[sv_ind]
+    print "%d support vectors" % shape(svs)[0]
+    m, n = shape(data_matrix)
+    error_count = 0
+    for i in range(m):
+        kernel_eval = kernel_trans(svs, data_matrix[i, :], ktup)
+        predict = kernel_eval.T * multiply(labelsv, alphas[sv_ind]) + b
+        if sign(predict) != sign(labels[i]):
+            error_count += 1
+
+    print "Training error: %f" % (float(error_count) / m)
+    data, labels = load_images('testDigits')
+    error_count = 0
+    data_matrix = mat(data)
+    label_matrix = mat(labels).transpose()
+    m, n = shape(data_matrix)
+    for i in range(m):
+        kernel_eval = kernel_trans(svs, data_matrix[i, :], ktup)
+        predict = kernel_eval.T * multiply(labelsv, alphas[sv_ind]) + b
+        if sign(predict) != sign(labels[i]):
+            error_count +=1
     print "Test error rate: %f" % (float(error_count) / m)
