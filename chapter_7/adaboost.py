@@ -76,3 +76,15 @@ def adaboost_trainDS(data, labels, iters=40):
         if error_rate == 0.0:
             break
     return weakarr
+
+
+def ada_classify(data, classifier):
+    data_matrix = mat(data)
+    m = shape(data)[0]
+    agg_class_est = mat(zeros((m, 1)))
+    for i in range(len(classifier)):
+        clss = classifier[i]
+        class_est = stump_classify(data_matrix, clss['dim'], clss['thresh'], clss['ineq'])
+        agg_class_est += clss['alpha'] * class_est
+        print "Agg Class Est: ", agg_class_est
+    return sign(agg_class_est)
