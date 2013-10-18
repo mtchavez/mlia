@@ -1,6 +1,21 @@
 from numpy import *
 
 
+def load_dataset(filename):
+    features = len(open(filename).readline().split('\t'))
+    data_mat = []
+    label_mat = []
+    file = open(filename)
+    for line in file.readlines():
+        lines = []
+        current = line.strip().split('\t')
+        for i in range(features-1):
+            lines.append(float(current[i]))
+        data_mat.append(lines)
+        label_mat.append(float(current[-1]))
+    return data_mat, label_mat
+
+
 def load_simpledata():
     data_matrix = matrix([
         [1., 2.1],
