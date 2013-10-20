@@ -45,3 +45,27 @@ def plot_standard(filename):
     yhat = xcopy * ws
     ax.plot(xcopy[:, 1], yhat)
     plt.show()
+
+
+def lwlr(testpt, xarr, yarr, k=1.0):
+    xmat = mat(xarr)
+    ymat = mat(yarr).T
+    m = shape(xmat)[0]
+    weights = mat(eye((m)))
+    for j in range(m):
+        diffmat = testpt - xmat[j, :]
+        weights[j, j] = exp(diffmat * diffmat.T / (-2.0 * k**2))
+    xtx = xmat.T * (weights * xmat)
+    if linalg.det(xtx) == 0.0:
+        print "Matrix is singular, cannot do inverse"
+        return
+    ws = xtx.I * (xmat.T * (weights * ymat))
+    return testpt * ws
+
+
+def lwlr_test(testarr, xarr, yarr, k=1.0):
+    m = shape(testarr)[0]
+    yhat = zeros(m)
+    for i in range(m):
+        yhat[i] = lwlr(testarr[i], xarr, yarr, k)
+    return yhat
