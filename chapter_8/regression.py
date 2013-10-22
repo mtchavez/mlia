@@ -69,3 +69,22 @@ def lwlr_test(testarr, xarr, yarr, k=1.0):
     for i in range(m):
         yhat[i] = lwlr(testarr[i], xarr, yarr, k)
     return yhat
+
+
+def plot_lwlr(filename, k=0.001):
+    xarr, yarr = load_dataset(filename)
+    yhat = lwlr_test(xarr, xarr, yarr, k)
+    xmat = mat(xarr)
+    srt_ind = xmat[:, 1].argsort(0)
+    xsort = xmat[srt_ind][:,0,:]
+
+    import matplotlib.pyplot as plt
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(xsort[:, 1], yhat[srt_ind])
+    ax.scatter(xmat[:, 1].flatten().A[0], mat(yarr).T.flatten().A[0], s=2, c='red')
+    plt.show()
+
+
+def res_err(yarr, yhatarr):
+    return ((yarr - yhatarr)**2).sum()
