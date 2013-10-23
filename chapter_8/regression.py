@@ -88,3 +88,39 @@ def plot_lwlr(filename, k=0.001):
 
 def res_err(yarr, yhatarr):
     return ((yarr - yhatarr)**2).sum()
+
+
+def ridge_reges(xmat, ymat, lam=0.2):
+    xtx = xmat.T * xmat
+    denom = xtx + eye(shape(xmat)[1]) * lam
+    if linalg.det(denom) == 0.0:
+        print "Matrix is singular, cannot do inverse"
+        return
+    ws = denom.I * (xmat.T * ymat)
+    return ws
+
+
+def ridge_test(xarr, yarr):
+    xmat = mat(xarr)
+    ymat = mat(yarr).T
+    ymean = mean(ymat, 0)
+    ymat = ymat - ymean
+    xmeans = mean(xmat, 0)
+    xvar = var(xmat, 0)
+    xmat = (xmat - xmeans) / xvar
+    total_test_pts = 30
+    wmat = zeros((total_test_pts, shape(xmat)[1]))
+    for i in range(total_test_pts):
+        ws = ridge_reges(xmat, ymat, exp(i - 10))
+        wmat[i, :] = ws.T
+    return wmat
+
+
+def plot_ridge_test(filename):
+    abx, aby = load_dataset(filename)
+    weights = ridge_test(abx, aby)
+    import matplotlib.pyplot as plt
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(weights)
+    plt.show()
